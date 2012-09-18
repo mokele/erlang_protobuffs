@@ -302,28 +302,24 @@ filter_forms(Msgs, Enums, [{function,L,json_ready,2,[Clause,Catchall]}|Tail],Bas
       begin
           Record = atomize(MsgName),
           {clause,CL,[{atom,CL,Record}|Args],When,
-            [{cons,CL,
-                {tuple,CL,
-                  [{atom,CL,Record},
-                        lists:foldl(
-                          fun
-                            ({_FNum,_Tag,_SType,SName,_}, Cons) ->
-                                Field = atomize(SName),
-                                {cons,CL,
-                                  {tuple,CL,
-                                    [{atom,CL,Field},
-                                      {call,CL,{atom,CL,json_ready},[
-                                          {record_field,CL,{var,CL,'Record'},Record,{atom,CL,Field}}
-                                        ]}
-                                    ]},
-                                  Cons}
-                          end,
-                          {nil, CL},
-                          Fields
-                        )
-                  ]},
-                {nil,CL}}]
-          }
+              [lists:foldl(
+                fun
+                  ({_FNum,_Tag,_SType,SName,_}, Cons) ->
+                      FieldAtom = atomize(SName),
+                      Field = to_camel(SName),
+                      {cons,CL,
+                        {tuple,CL,
+                          [erl_parse:abstract(Field),
+                            {call,CL,{atom,CL,json_ready},[
+                                {record_field,CL,{var,CL,'Record'},Record,{atom,CL,FieldAtom}}
+                              ]}
+                          ]},
+                        Cons}
+                end,
+                {nil, CL},
+                Fields
+              )]
+            }
       end
       || {MsgName, Fields, _Extends0} <- Msgs
     ],
@@ -836,7 +832,7 @@ generate_field_definitions([{Name, _, Default} | Tail], Acc) ->
 
 %% @hidden
 atomize(String) ->
-    list_to_atom(string:to_lower(String)).
+    list_to_atom(string:to_lower(lists:flatten(String))).
 
 %% @hidden
 replace_atom(Find, Find, Replace) -> Replace;
@@ -962,3 +958,12 @@ type_path_to_type(TypePath) ->
             TypePath
     end.
 
+%% @hidden
+to_camel(Atom) when is_atom(Atom) ->
+  to_camel(atom_to_list(Atom));
+to_camel(L) when is_list(L) ->
+  iolist_to_binary(to_camel(L, [])).
+
+to_camel([$_, C|T], L) -> to_camel(T, [L, string:to_upper([C])]);
+to_camel([], L) -> L;
+to_camel([H|T], L) -> to_camel(T, [L,H]).

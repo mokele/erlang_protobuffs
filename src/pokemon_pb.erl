@@ -46,15 +46,19 @@ encode_extensions(#pikachu{'$extensions' = Extends}) ->
         {Key, {Optionalness, Data, Type, Accer}} <- dict:to_list(Extends)];
 encode_extensions(_) -> [].
 
+json_ready(undefined) ->
+    null;
+json_ready(T) when is_boolean(T) ->
+    T;
 json_ready(T) when is_atom(T) ->
-  atom_to_binary(T, utf8);
+    atom_to_binary(T, utf8);
+json_ready(T) when is_list(T) ->
+    lists:map(fun json_ready/1, T);
 json_ready(T) when not is_tuple(T) -> T;
 json_ready(Record) ->
     json_ready(element(1, Record), Record).
 json_ready(pikachu, Record) -> [
-        {pikachu, [
-            [{abc, json_ready(Record#pikachu.abc)}]
-          ]}
+        [{abc, json_ready(Record#pikachu.abc)}]
     ];
 json_ready(_, _) -> [].
 
