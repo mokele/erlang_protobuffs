@@ -296,6 +296,41 @@ filter_forms(Msgs, Enums, [{function,L,set_extension,3,[RecClause,Catchall]}|Tai
     NewHead = {function,L,set_extension,3,NewClauses},
     filter_forms(Msgs,Enums,Tail,Basename,[NewHead|Acc]);
 
+filter_forms(Msgs, Enums, [{function,L,json_ready,2,[Clause,Catchall]}|Tail],Basename, Acc) ->
+    {clause,CL,[_|Args],When,_Lines} = Clause,
+    NewRecClauses = [
+      begin
+          Record = atomize(MsgName),
+          {clause,CL,[{atom,CL,Record}|Args],When,
+            [{cons,CL,
+                {tuple,CL,
+                  [{atom,CL,Record},
+                        lists:foldl(
+                          fun
+                            ({_FNum,_Tag,_SType,SName,_}, Cons) ->
+                                Field = atomize(SName),
+                                {cons,CL,
+                                  {tuple,CL,
+                                    [{atom,CL,Field},
+                                      {call,CL,{atom,CL,json_ready},[
+                                          {record_field,CL,{var,CL,'Record'},Record,{atom,CL,Field}}
+                                        ]}
+                                    ]},
+                                  Cons}
+                          end,
+                          {nil, CL},
+                          Fields
+                        )
+                  ]},
+                {nil,CL}}]
+          }
+      end
+      || {MsgName, Fields, _Extends0} <- Msgs
+    ],
+    NewClauses = lists:reverse([Catchall | NewRecClauses]),
+    NewHead = {function,L,json_ready,2,NewClauses},
+    filter_forms(Msgs,Enums,Tail,Basename,[NewHead|Acc]);
+
 filter_forms(Msgs, Enums, [Form|Tail], Basename, Acc) ->
     filter_forms(Msgs, Enums, Tail, Basename, [Form|Acc]);
 

@@ -28,6 +28,7 @@
          set_extension/3]).
 -export([decode_extensions/1]).
 -export([encode/1, decode/2]).
+-export([json_ready/1]).
 -record(pikachu, {abc, def, '$extensions' = dict:new()}).
 
 %% ENCODE
@@ -44,6 +45,19 @@ encode_extensions(#pikachu{'$extensions' = Extends}) ->
     [pack(Key, Optionalness, Data, Type, Accer) ||
         {Key, {Optionalness, Data, Type, Accer}} <- dict:to_list(Extends)];
 encode_extensions(_) -> [].
+
+json_ready(T) when is_atom(T) ->
+  atom_to_binary(T, utf8);
+json_ready(T) when not is_tuple(T) -> T;
+json_ready(Record) ->
+    json_ready(element(1, Record), Record).
+json_ready(pikachu, Record) -> [
+        {pikachu, [
+            [{abc, json_ready(Record#pikachu.abc)}]
+          ]}
+    ];
+json_ready(_, _) -> [].
+
 
 iolist(pikachu, Record) ->
     [pack(1, required, with_default(Record#pikachu.abc, none), string, [])].
@@ -166,7 +180,7 @@ decode_extensions(#pikachu{'$extensions' = Extensions} = Record) ->
 decode_extensions(Record) ->
     Record.
 
-decode_extensions(Types, [], Acc) ->
+decode_extensions(_Types, [], Acc) ->
     dict:from_list(Acc);
 decode_extensions(Types, [{Fnum, Bytes} | Tail], Acc) ->
     NewAcc = case lists:keysearch(Fnum, 1, Types) of
