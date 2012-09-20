@@ -28,7 +28,7 @@
          set_extension/3]).
 -export([decode_extensions/1]).
 -export([encode/1, decode/2]).
--export([json_ready/1]).
+-export([json_ready/1, from_props/2]).
 -record(pikachu, {abc, def, '$extensions' = dict:new()}).
 
 %% ENCODE
@@ -57,10 +57,57 @@ json_ready(T) when is_list(T) ->
 json_ready(T) when not is_tuple(T) -> T;
 json_ready(Record) ->
     json_ready(element(1, Record), Record).
-json_ready(pikachu, Record) -> [
-        [{abc, json_ready(Record#pikachu.abc)}]
-    ];
+json_ready(pikachu, Record) -> 
+    append_props(abc, Record#pikachu.abc, []);
+
 json_ready(_, _) -> [].
+
+append_props(_, undefined, L) ->
+  L;
+append_props(K, V, L) ->
+  [{K, json_ready(V)}|L].
+
+from_props(pikachu, L) ->
+    Types = [{1, abc, <<"abc">>, int32, []}, {2, def, <<"def">>, double, []}],
+    Defaults = [],
+    Decoded = from_props(L, Types, Defaults),
+    to_record(pikachu, Decoded).
+
+from_props(L, Types, Acc0) ->
+  lists:foldl(
+    fun({K, V}, Acc) ->
+        AtomK = binary_to_atom(K, utf8),
+        case lists:keysearch(AtomK, 2, Acc) of
+            {value, {_FNum, AtomK, _Value}} ->
+              Acc;
+            false ->
+              case lists:keysearch(K, 3, Types) of
+                {value, {FNum, CamelAtomK, K, Type, _Opts}} ->
+                  [{FNum, CamelAtomK, from_props_1(Type, V)}|Acc];
+                false ->
+                  Acc
+              end
+        end
+    end,
+    Acc0, L
+  ).
+
+from_props_1(double,   V) -> V;
+from_props_1(float,    V) -> V;
+from_props_1(int32,    V) -> V;
+from_props_1(int64,    V) -> V;
+from_props_1(uint32,   V) -> V;
+from_props_1(uint64,   V) -> V;
+from_props_1(sint32,   V) -> V;
+from_props_1(sint64,   V) -> V;
+from_props_1(fixed32,  V) -> V;
+from_props_1(fixed64,  V) -> V;
+from_props_1(sfixed32, V) -> V;
+from_props_1(sfixed64, V) -> V;
+from_props_1(bool,     V) -> V;
+from_props_1(string,   V) -> V;
+from_props_1(bytes,    V) -> V;
+from_props_1(Type,     V) -> from_props(Type, V).
 
 
 iolist(pikachu, Record) ->

@@ -254,6 +254,9 @@ filter_forms(Msgs, Enums, [{function,L,decode_pikachu,1,[Clause]}|Tail], Basenam
 		 end || {Name, _, _} <- Msgs],
     filter_forms(Msgs, Enums, Tail, Basename, Functions ++ Acc);
 
+filter_forms(Msgs, Enums, [{function,L,from_props,2,[Clause]}|Tail], Basename, Acc) ->
+    filter_forms(Msgs, Enums, Tail, Basename, [expand_from_props_function(Msgs, Enums, L, Clause)|Acc]);
+
 filter_forms(Msgs, Enums, [{function,L,decode,2,[Clause]}|Tail], Basename, Acc) ->
     filter_forms(Msgs, Enums, Tail, Basename, [expand_decode_function(Msgs, L, Clause)|Acc]);
 
@@ -307,14 +310,20 @@ filter_forms(Msgs, Enums, [{function,L,json_ready,2,[Clause,Catchall]}|Tail],Bas
                   ({_FNum,_Tag,_SType,SName,_}, Cons) ->
                       FieldAtom = atomize(SName),
                       Field = to_camel(SName),
-                      {cons,CL,
-                        {tuple,CL,
-                          [erl_parse:abstract(Field),
-                            {call,CL,{atom,CL,json_ready},[
-                                {record_field,CL,{var,CL,'Record'},Record,{atom,CL,FieldAtom}}
-                              ]}
-                          ]},
-                        Cons}
+                      {call,CL,{atom,CL,append_props},[
+                            erl_parse:abstract(Field),
+                            {record_field,CL,{var,CL,'Record'},Record,{atom,CL,FieldAtom}},
+                            Cons
+                          ]}
+
+                      %{cons,CL,
+                      %  {tuple,CL,
+                      %    [erl_parse:abstract(Field),
+                      %      {call,CL,{atom,CL,json_ready},[
+                      %          {record_field,CL,{var,CL,'Record'},Record,{atom,CL,FieldAtom}}
+                      %        ]}
+                      %    ]},
+                      %  Cons}
                 end,
                 {nil, CL},
                 Fields
@@ -459,6 +468,56 @@ filter_iolist_clause({MsgName, Fields0, _Extends0}, {clause,L,_Args,Guards,_Cont
 		      Acc}
 	     end, {nil,L}, Fields),
     {clause,L,[{atom,L,atomize(MsgName)},{var,L,'Record'}],Guards,[Cons]}.
+
+%% @hidden
+expand_from_props_function(Msgs, Enums, Line, Clause) ->
+    {function,Line,from_props,2, 
+      [filter_from_props_clause(Msgs, Msg, Clause) || Msg <- Msgs]
+       ++ [filter_enums_from_props_clause(Enum, Clause) || Enum <- Enums]
+   }.
+
+filter_enums_from_props_clause({enum,EnumTypeName,_IntValue,EnumValue},
+  {clause,L,_Args,Guards,_}) ->
+  BinaryValue = atom_to_binary(EnumValue, utf8),
+  BinaryValueAbstract = erl_parse:abstract(BinaryValue),
+  A = {atom,L,EnumValue},
+  {clause,L,[{atom,L,atomize(EnumTypeName)},BinaryValueAbstract],Guards,[A]}.
+
+
+%% @hidden
+filter_from_props_clause(Msgs, {MsgName, Fields, Extends}, {clause,L,_Args,Guards,[_,_,C,D]}) ->
+    Types = lists:keysort(1, [begin
+            {FNum, list_to_atom(SName), 
+			       atomize(SType), 
+			       decode_opts(Msgs, Tag, SType), Def} end ||
+				 {FNum,Tag,SType,SName,Def} <- Fields]),
+    Cons = lists:foldl(
+	     fun({FNum, FName, Type, Opts, _Def}, Acc) ->
+             LowerAtom = list_to_atom(string:to_lower(atom_to_list(FName))),
+             {cons,L,{tuple,L,[
+                   {integer,L,FNum},
+                   {atom,L,LowerAtom},
+                   erl_parse:abstract(to_camel(LowerAtom)),
+                   {atom,L,Type},
+                   erl_parse:abstract(Opts)]},Acc}
+	     end, {nil,L}, Types),
+    ExtendDefault = case Extends of
+        disallowed -> {nil,L};
+        _ -> erl_parse:abstract([{false, '$extensions', dict:new()}])
+    end,
+    Defaults = lists:foldr(
+        fun
+            ({_FNum, _FName, _Type, _Opts, none}, Acc) ->
+                Acc;
+            ({FNum, FName, _Type, _Opts, Def}, Acc) ->
+                {cons,L,{tuple,L,[{integer,L,FNum},{atom,L,FName},erl_parse:abstract(Def)]},Acc}
+        end,
+        ExtendDefault,
+        Types),
+    A = {match,L,{var,L,'Types'},Cons},
+    B = {match,L,{var,L,'Defaults'},Defaults},
+    D1 = replace_atom(D, pikachu, atomize(MsgName)),
+    {clause,L,[{atom,L,atomize(MsgName)},{var,L,'L'}],Guards,[A,B,C,D1]}.
 
 %% @hidden
 expand_decode_function(Msgs, Line, Clause) ->
@@ -967,3 +1026,6 @@ to_camel(L) when is_list(L) ->
 to_camel([$_, C|T], L) -> to_camel(T, [L, string:to_upper([C])]);
 to_camel([], L) -> L;
 to_camel([H|T], L) -> to_camel(T, [L,H]).
+
+from_camel(S) ->
+  string:to_lower(re:replace(S, "[A-Z]", "_&", [{return, list}])).
