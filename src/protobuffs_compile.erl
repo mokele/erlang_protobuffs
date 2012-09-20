@@ -28,7 +28,7 @@
 -compile(export_all).
 -else.
 -export([scan_file/1, scan_file/2, scan_string/2, scan_string/3, 
-	 generate_source/1, generate_source/2]).
+	 generate_source/1, generate_source/2, to_camel/1]).
 -endif.
 
 -record(collected,{enum=[], msg=[], extensions=[], package}).
@@ -299,7 +299,7 @@ filter_forms(Msgs, Enums, [{function,L,set_extension,3,[RecClause,Catchall]}|Tai
     NewHead = {function,L,set_extension,3,NewClauses},
     filter_forms(Msgs,Enums,Tail,Basename,[NewHead|Acc]);
 
-filter_forms(Msgs, Enums, [{function,L,json_ready,2,[Clause,Catchall]}|Tail],Basename, Acc) ->
+filter_forms(Msgs, Enums, [{function,L,json_ready_1,2,[Clause,Catchall]}|Tail],Basename, Acc) ->
     {clause,CL,[_|Args],When,_Lines} = Clause,
     NewRecClauses = [
       begin
@@ -315,15 +315,6 @@ filter_forms(Msgs, Enums, [{function,L,json_ready,2,[Clause,Catchall]}|Tail],Bas
                             {record_field,CL,{var,CL,'Record'},Record,{atom,CL,FieldAtom}},
                             Cons
                           ]}
-
-                      %{cons,CL,
-                      %  {tuple,CL,
-                      %    [erl_parse:abstract(Field),
-                      %      {call,CL,{atom,CL,json_ready},[
-                      %          {record_field,CL,{var,CL,'Record'},Record,{atom,CL,FieldAtom}}
-                      %        ]}
-                      %    ]},
-                      %  Cons}
                 end,
                 {nil, CL},
                 Fields
@@ -333,7 +324,7 @@ filter_forms(Msgs, Enums, [{function,L,json_ready,2,[Clause,Catchall]}|Tail],Bas
       || {MsgName, Fields, _Extends0} <- Msgs
     ],
     NewClauses = lists:reverse([Catchall | NewRecClauses]),
-    NewHead = {function,L,json_ready,2,NewClauses},
+    NewHead = {function,L,json_ready_1,2,NewClauses},
     filter_forms(Msgs,Enums,Tail,Basename,[NewHead|Acc]);
 
 filter_forms(Msgs, Enums, [Form|Tail], Basename, Acc) ->
@@ -1026,6 +1017,3 @@ to_camel(L) when is_list(L) ->
 to_camel([$_, C|T], L) -> to_camel(T, [L, string:to_upper([C])]);
 to_camel([], L) -> L;
 to_camel([H|T], L) -> to_camel(T, [L,H]).
-
-from_camel(S) ->
-  string:to_lower(re:replace(S, "[A-Z]", "_&", [{return, list}])).

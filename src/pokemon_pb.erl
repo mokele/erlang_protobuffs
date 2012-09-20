@@ -28,7 +28,7 @@
          set_extension/3]).
 -export([decode_extensions/1]).
 -export([encode/1, decode/2]).
--export([json_ready/1, from_props/2]).
+-export([json_ready/1, json_ready/2, from_props/1, from_props/2]).
 -record(pikachu, {abc, def, '$extensions' = dict:new()}).
 
 %% ENCODE
@@ -54,18 +54,29 @@ json_ready(T) when is_atom(T) ->
     atom_to_binary(T, utf8);
 json_ready(T) when is_list(T) ->
     lists:map(fun json_ready/1, T);
-json_ready(T) when not is_tuple(T) -> T;
+json_ready(T) when not is_tuple(T) ->
+  T;
 json_ready(Record) ->
-    json_ready(element(1, Record), Record).
-json_ready(pikachu, Record) -> 
+    json_ready(Record, false).
+
+json_ready(Record, true) ->
+  [{protobuffs_compile:to_camel(element(1, Record)),
+      json_ready(Record, false)}];
+json_ready(Record, false) ->
+    json_ready_1(element(1, Record), Record).
+
+json_ready_1(pikachu, Record) -> 
     append_props(abc, Record#pikachu.abc, []);
 
-json_ready(_, _) -> [].
+json_ready_1(_, _) -> [].
 
 append_props(_, undefined, L) ->
   L;
 append_props(K, V, L) ->
   [{K, json_ready(V)}|L].
+
+from_props([{K, L}]) ->
+  from_props(from_camel(K), L).
 
 from_props(pikachu, L) ->
     Types = [{1, abc, <<"abc">>, int32, []}, {2, def, <<"def">>, double, []}],
@@ -76,7 +87,7 @@ from_props(pikachu, L) ->
 from_props(L, Types, Acc0) ->
   lists:foldl(
     fun({K, V}, Acc) ->
-        AtomK = binary_to_atom(K, utf8),
+        AtomK = binary_to_existing_atom(K, utf8),
         case lists:keysearch(AtomK, 2, Acc) of
             {value, {_FNum, AtomK, _Value}} ->
               Acc;
@@ -312,3 +323,6 @@ set_extension(#pikachu{'$extensions' = Extensions} = Record, fieldname, Value) -
     {ok, Record#pikachu{'$extensions' = NewExtends}};
 set_extension(Record, _, _) ->
     {error, Record}.
+
+from_camel(S) ->
+  list_to_existing_atom(string:to_lower(re:replace(S, "[A-Z]", "_&", [{return, list}]))).
