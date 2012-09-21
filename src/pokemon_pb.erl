@@ -86,22 +86,35 @@ from_props(pikachu, L) ->
 
 from_props(L, Types, Acc0) ->
   lists:foldl(
-    fun({K, V}, Acc) ->
-        AtomK = binary_to_existing_atom(K, utf8),
-        case lists:keysearch(AtomK, 2, Acc) of
-            {value, {_FNum, AtomK, _Value}} ->
-              Acc;
+    fun({K, V}, Acc1) ->
+        AtomK = from_camel(K),
+        case lists:keytake(AtomK, 2, Acc1) of
+            {value, {FNum, AtomK, _Value}, Acc2} ->
+              {value, {FNum, AtomK, K, Type, Opts}} = lists:keysearch(K, 3, Types),
+              [{FNum, AtomK, from_props_1(Type, V, Opts)}|Acc2];
             false ->
               case lists:keysearch(K, 3, Types) of
-                {value, {FNum, CamelAtomK, K, Type, _Opts}} ->
-                  [{FNum, CamelAtomK, from_props_1(Type, V)}|Acc];
+                {value, {FNum, CamelAtomK, K, Type, Opts}} ->
+                  [{FNum, CamelAtomK, from_props_1(Type, V, Opts)}|Acc1];
                 false ->
-                  Acc
+                  Acc1
               end
         end
     end,
     Acc0, L
   ).
+
+from_props_1(Type, V, Opts) ->
+  case lists:member(repeated, Opts) of
+    true ->
+      lists:map(
+        fun(VV) ->
+            from_props_1(Type, VV)
+        end, V
+      );
+    false ->
+      from_props_1(Type, V)
+  end.
 
 from_props_1(double,   V) -> V;
 from_props_1(float,    V) -> V;
@@ -325,4 +338,4 @@ set_extension(Record, _, _) ->
     {error, Record}.
 
 from_camel(S) ->
-  list_to_existing_atom(string:to_lower(re:replace(S, "[A-Z]", "_&", [{return, list}]))).
+  list_to_existing_atom(string:to_lower(re:replace(S, "[A-Z]", "_&", [{return, list}, global]))).
