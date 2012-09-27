@@ -316,12 +316,34 @@ filter_forms(Msgs, Enums, [{function,L,json_ready_1,2,[Clause,Catchall]}|Tail],B
                             Cons
                           ]}
                 end,
-                {nil, CL},
+                case Extends of
+                  disallowed -> {nil, CL};
+                  _ ->
+                    {call,CL,{atom,CL,append_props},[
+                          erl_parse:abstract(<<"$extensions">>),
+                          lists:foldl(
+                            fun
+                              ({_FNum,_Tag,_SType,SName,_}, Cons) ->
+                                FieldAtom = atomize(SName),
+                                Field = to_camel(SName),
+                                {call,CL,{atom,CL,append_extension},[
+                                      erl_parse:abstract(Field),
+                                      {atom,CL,FieldAtom},
+                                      {var,CL,'Record'},
+                                      Cons
+                                    ]}
+                            end,
+                            {nil, CL},
+                            Extends
+                          ),
+                          {nil, CL}
+                        ]}
+                  end,
                 Fields
               )]
             }
       end
-      || {MsgName, Fields, _Extends0} <- Msgs
+      || {MsgName, Fields, Extends} <- Msgs
     ],
     NewClauses = lists:reverse([Catchall | NewRecClauses]),
     NewHead = {function,L,json_ready_1,2,NewClauses},
@@ -477,11 +499,16 @@ filter_enums_from_props_clause({enum,EnumTypeName,_IntValue,EnumValue},
 
 %% @hidden
 filter_from_props_clause(Msgs, {MsgName, Fields, Extends}, {clause,L,_Args,Guards,[_,_,C,D]}) ->
+    AllFields = 
+      case Extends of
+        disallowed -> Fields;
+        _          -> Extends
+      end,
     Types = lists:keysort(1, [begin
             {FNum, list_to_atom(SName), 
 			       atomize(SType), 
 			       decode_opts(Msgs, Tag, SType), Def} end ||
-				 {FNum,Tag,SType,SName,Def} <- Fields]),
+				 {FNum,Tag,SType,SName,Def} <- AllFields]),
     Cons = lists:foldl(
 	     fun({FNum, FName, Type, Opts, _Def}, Acc) ->
              LowerAtom = list_to_atom(string:to_lower(atom_to_list(FName))),
@@ -542,7 +569,13 @@ filter_decode_clause(Msgs, {MsgName, Fields, Extends}, {clause,L,_Args,Guards,[_
     A = {match,L,{var,L,'Types'},Cons},
     B = {match,L,{var,L,'Defaults'},Defaults},
     D1 = replace_atom(D, pikachu, atomize(MsgName)),
-    {clause,L,[{atom,L,atomize(MsgName)},{var,L,'Bytes'}],Guards,[A,B,C,D1]}.
+    D2 =
+      case Extends of
+        disallow -> D1;
+        _ ->
+          {call,L,{atom,L,'decode_extensions'},[D1]}
+      end,
+    {clause,L,[{atom,L,atomize(MsgName)},{var,L,'Bytes'}],Guards,[A,B,C,D2]}.
 
 %% @hidden
 filter_decode_extensions_clause(_,[],_,Acc) ->
@@ -586,14 +619,7 @@ expand_to_record_function(Msgs, Line, Clause) ->
 %% @hidden
 filter_to_record_clause({MsgName, _, Extends}, {clause,L,[_Param1,Param2],Guards,[Fold,DecodeExtends]}) ->
     Fold1 = replace_atom(Fold, pikachu, atomize(MsgName)),
-    ReturnLine = case Extends of
-        disallowed ->
-            {var,L,'Record1'};
-        _ ->
-            {ok, Tokens, _} = erl_scan:string("decode_extensions(Record1)."),
-	          {ok, [Abstract]} = erl_parse:parse_exprs(Tokens),
-            Abstract
-    end,
+    ReturnLine = {var,L,'Record1'},
     {clause,L,[{atom,L,atomize(MsgName)},Param2],Guards,[Fold1,ReturnLine]}.
 
 %% @hidden

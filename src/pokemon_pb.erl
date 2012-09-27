@@ -29,6 +29,7 @@
 -export([decode_extensions/1]).
 -export([encode/1, decode/2]).
 -export([json_ready/1, json_ready/2, from_props/1, from_props/2]).
+-export([append_extension/4]).
 -record(pikachu, {abc, def, '$extensions' = dict:new()}).
 
 %% ENCODE
@@ -66,14 +67,30 @@ json_ready(Record, false) ->
     json_ready_1(element(1, Record), Record).
 
 json_ready_1(pikachu, Record) -> 
-    append_props(abc, Record#pikachu.abc, []);
+    append_props(abc, Record#pikachu.abc, 
+      append_props('$extensions',
+        append_extension(<<"fieldname">>, fieldname, Record, []),
+        [])
+    );
 
 json_ready_1(_, _) -> [].
 
+append_props(<<"$extensions">>, [], L) ->
+  L;
+append_props(<<"$extensions">> = K, V, L) ->
+  [{K, V}|L];
 append_props(_, undefined, L) ->
   L;
 append_props(K, V, L) ->
   [{K, json_ready(V)}|L].
+
+append_extension(K, AtomK, Record, Acc) ->
+  case get_extension(Record, AtomK) of
+    {ok, V} ->
+      append_props(K, V, Acc);
+    undefined ->
+      Acc
+  end.
 
 from_props([{K, L}]) ->
   from_props(from_camel(K), L).
@@ -89,16 +106,33 @@ from_props(L, Types, Acc0) ->
     fun({K, V}, Acc1) ->
         AtomK = from_camel(K),
         case lists:keytake(AtomK, 2, Acc1) of
-            {value, {FNum, AtomK, _Value}, Acc2} ->
-              {value, {FNum, AtomK, K, Type, Opts}} = lists:keysearch(K, 3, Types),
-              [{FNum, AtomK, from_props_1(Type, V, Opts)}|Acc2];
-            false ->
-              case lists:keysearch(K, 3, Types) of
-                {value, {FNum, CamelAtomK, K, Type, Opts}} ->
-                  [{FNum, CamelAtomK, from_props_1(Type, V, Opts)}|Acc1];
-                false ->
-                  Acc1
-              end
+          {value, {FNum, AtomK, OldValue}, Acc2} ->
+            case AtomK of
+              '$extensions' ->
+                Dict =
+                  lists:foldl(
+                    fun({ExtK, ExtV}, FoldDict) ->
+                        ExtAtomK = from_camel(ExtK),
+                        {value, {ExtFNum, ExtAtomK, ExtK, Type, Opts}} = lists:keysearch(ExtK, 3, Types),
+
+                        StoreValue = {optional, from_props_1(Type, ExtV, Opts), ExtAtomK, none},
+                        dict:store(ExtFNum, StoreValue, FoldDict)
+                    end,
+                    OldValue,
+                    V
+                  ),
+                [{FNum, AtomK, Dict}|Acc2];
+              _ ->
+                {value, {FNum, AtomK, K, Type, Opts}} = lists:keysearch(K, 3, Types),
+                [{FNum, AtomK, from_props_1(Type, V, Opts)}|Acc2]
+            end;
+          false ->
+            case lists:keysearch(K, 3, Types) of
+              {value, {FNum, CamelAtomK, K, Type, Opts}} ->
+                [{FNum, CamelAtomK, from_props_1(Type, V, Opts)}|Acc1];
+              false ->
+                Acc1
+            end
         end
     end,
     Acc0, L
