@@ -30,6 +30,7 @@
 -export([encode/1, decode/2]).
 -export([json_ready/1, json_ready/2, from_props/1, from_props/2]).
 -export([append_extension/4]).
+-export([enum_to_int/2]).
 -record(pikachu, {abc, def, '$extensions' = dict:new()}).
 
 %% ENCODE
