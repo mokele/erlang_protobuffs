@@ -281,20 +281,20 @@ filter_forms(Msgs, Enums, [{function,L,extension_size,1,[RecClause,CatchAll]}|Ta
     filter_forms(Msgs, Enums, Tail, Basename, [NewHead|Acc]);
 
 filter_forms(Msgs, Enums, [{function,L,has_extension,2,[FilterClause,CatchallClause]}|Tail],Basename,Acc) ->
-    NewRecClauses = filter_has_extension(Msgs, FilterClause, []),
+    NewRecClauses = lists:usort(filter_has_extension(Msgs, FilterClause, [])),
     NewClauses = lists:reverse([CatchallClause | NewRecClauses]),
     NewHead = {function,L,has_extension,2,NewClauses},
     filter_forms(Msgs, Enums, Tail, Basename, [NewHead | Acc]);
 
 filter_forms(Msgs, Enums, [{function,L,get_extension,2,[AtomClause,IntClause,Catchall]}|Tail],Basename,Acc) ->
     NewAtomClauses = filter_get_extension_atom(Msgs,AtomClause,[]),
-    NewRecClauses = filter_get_extension_integer(Msgs, IntClause, NewAtomClauses),
+    NewRecClauses = lists:usort(filter_get_extension_integer(Msgs, IntClause, NewAtomClauses)),
     NewClauses = lists:reverse([Catchall | NewRecClauses]),
     NewHead = {function,L,get_extension,2,NewClauses},
     filter_forms(Msgs,Enums, Tail, Basename, [NewHead | Acc]);
 
 filter_forms(Msgs, Enums, [{function,L,set_extension,3,[RecClause,Catchall]}|Tail],Basename, Acc) ->
-    NewRecClauses = filter_set_extension(Msgs, RecClause, []),
+    NewRecClauses = lists:usort(filter_set_extension(Msgs, RecClause, [])),
     NewClauses = lists:reverse([Catchall | NewRecClauses]),
     NewHead = {function,L,set_extension,3,NewClauses},
     filter_forms(Msgs,Enums,Tail,Basename,[NewHead|Acc]);
