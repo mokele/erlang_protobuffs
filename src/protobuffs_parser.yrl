@@ -48,7 +48,7 @@ safe_string(A) -> make_safe(atom_to_list(A)).
 
 make_safe(String) ->
   case erl_scan:reserved_word(list_to_atom(String)) of 
-    true -> "pb_"++String;
+    true -> "'"++String++"'";
     false -> String
   end.
 
